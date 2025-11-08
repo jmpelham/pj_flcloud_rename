@@ -15,7 +15,7 @@ jobs:
           python-version: '3.11'
       - run: |
           python -m pip install --upgrade pip pyinstaller
-          pyinstaller --onefile --windowed --name "P&JxFL File Renamorator 3000" pj_pack_renamer_gui.py
+          pyinstaller --onefile --windowed --name "P&JxFL File Renamorator 3000" FLCloud_Rename_GUI_2.py
       - uses: actions/upload-artifact@v4
         with:
           name: PJxFL-Renamorator-EXE
