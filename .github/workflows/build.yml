@@ -1,11 +1,12 @@
-name: Build Windows EXE
+name: Build Desktop Apps
 
 on:
-  workflow_dispatch:
   push:
     branches: [ main ]
+  workflow_dispatch: {}
 
 jobs:
+  # ---------- Windows .exe ----------
   build-windows:
     runs-on: windows-latest
     steps:
@@ -13,11 +14,71 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: |
+      - name: Install PyInstaller
+        run: |
           python -m pip install --upgrade pip pyinstaller
-          pyinstaller --onefile --windowed --name "P&JxFL File Renamorator 3000" FLCloud_Rename_GUI_2.py
-      - uses: actions/upload-artifact@v4
+      - name: Build one-file GUI exe
+        run: |
+          pyinstaller --onefile --windowed ^
+            --icon icons\icon.ico ^
+            --name "P&JxFL File Renamorator 3000" ^
+            FLCloud_Rename_GUI.py
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: PJxFL-Renamorator-EXE
+          name: PJxFL-Renamorator-Windows
           path: dist/*
 
+  # ---------- macOS Intel .app (x86_64) ----------
+  build-macos-intel:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install PyInstaller
+        run: |
+          python -m pip install --upgrade pip pyinstaller
+      - name: Build macOS .app (Intel)
+        run: |
+          pyinstaller --windowed \
+            --icon=icons/icon.icns \
+            --name "P&JxFL File Renamorator 3000" \
+            FLCloud_Rename_GUI.py
+      - name: Zip .app for download
+        run: |
+          APP="P&JxFL File Renamorator 3000.app"
+          ditto -c -k --sequesterRsrc --keepParent "dist/${APP}" "Renamorator-macOS-Intel.zip"
+      - name: Upload macOS Intel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PJxFL-Renamorator-macOS-Intel
+          path: Renamorator-macOS-Intel.zip
+
+  # ---------- macOS Apple Silicon .app (arm64) ----------
+  build-macos-arm:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install PyInstaller
+        run: |
+          python -m pip install --upgrade pip pyinstaller
+      - name: Build macOS .app (Apple Silicon)
+        run: |
+          pyinstaller --windowed \
+            --icon=icons/icon.icns \
+            --name "P&JxFL File Renamorator 3000" \
+            FLCloud_Rename_GUI.py
+      - name: Zip .app for download
+        run: |
+          APP="P&JxFL File Renamorator 3000.app"
+          ditto -c -k --sequesterRsrc --keepParent "dist/${APP}" "Renamorator-macOS-AppleSilicon.zip"
+      - name: Upload macOS Apple Silicon artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PJxFL-Renamorator-macOS-AppleSilicon
+          path: Renamorator-macOS-AppleSilicon.zip
