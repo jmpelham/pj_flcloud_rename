@@ -20,7 +20,7 @@ jobs:
       - name: Build one-file GUI exe
         run: |
           pyinstaller --onefile --windowed ^
-            --icon icons\icon.ico ^
+            --icon icons\PJFLRename.ico ^
             --name "P&JxFL File Renamorator 3000" ^
             FLCloud_Rename_GUI.py
       - name: Upload Windows artifact
@@ -43,7 +43,7 @@ jobs:
       - name: Build macOS .app (Intel)
         run: |
           pyinstaller --windowed \
-            --icon=icons/icon.icns \
+            --icon=icons/PJFLRename.icns \
             --name "P&JxFL File Renamorator 3000" \
             FLCloud_Rename_GUI.py
       - name: Zip .app for download
@@ -70,15 +70,15 @@ jobs:
       - name: Build macOS .app (Apple Silicon)
         run: |
           pyinstaller --windowed \
-            --icon=icons/icon.icns \
+            --icon=icons/PJFLRename.icns \
             --name "P&JxFL File Renamorator 3000" \
             FLCloud_Rename_GUI.py
       - name: Zip .app for download
         run: |
           APP="P&JxFL File Renamorator 3000.app"
-          ditto -c -k --sequesterRsrc --keepParent "dist/${APP}" "Renamorator-macOS-AppleSilicon.zip"
+          ditto -c -k --sequesterRsrc --keepParent "dist/${APP}" "Renamorator-macOS-AppleSilPJFLRename.zip"
       - name: Upload macOS Apple Silicon artifact
         uses: actions/upload-artifact@v4
         with:
           name: PJxFL-Renamorator-macOS-AppleSilicon
-          path: Renamorator-macOS-AppleSilicon.zip
+          path: Renamorator-macOS-AppleSilPJFLRename.zip
