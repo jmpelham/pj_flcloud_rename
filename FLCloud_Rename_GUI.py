@@ -214,7 +214,7 @@ def pack_abbrev_from_parent(parent_dir: Path) -> str:
 def process_folder(selected_path: str, on_progress=None, pack_prefix: str | None = None):
     """
     on_progress: optional callback taking (phase_text, count_done, count_total)
-    pack_prefix: optional override (3–6 letters, will be uppercased).
+    pack_prefix: optional override (3–8 letters, will be uppercased).
     """
     source_dir = Path(selected_path).expanduser().resolve()
     if not source_dir.exists() or not source_dir.is_dir():
@@ -360,7 +360,7 @@ class RenamoratorGUI:
 
         tk.Label(
             outer,
-            text="Pack Prefix (3–6 letters; no numbers, no spaces)",
+            text="Pack Prefix (3–8 letters; no numbers, no spaces)",
             pady=8
         ).pack(anchor="w")
 
@@ -401,14 +401,14 @@ class RenamoratorGUI:
             self.pack_prefix_var.set(val)
             return
 
-        if val == "" or re.fullmatch(r"[A-Za-z]{3,6}", val):
+        if val == "" or re.fullmatch(r"[A-Za-z]{3,8}", val):
             self.error_text.set("")
             if self.selected_path.get():
                 self.btn_rename.pack(anchor="w", pady=(12, 0))
                 self.btn_rename.config(state="normal")
         else:
             self.error_text.set(
-                "Pack Prefix must be 3–6 letters (A–Z), no numbers, no spaces.\n"
+                "Pack Prefix must be 3–8 letters (A–Z), no numbers, no spaces.\n"
                 "Leave blank to use the pack name."
             )
             if self.selected_path.get():
@@ -428,9 +428,9 @@ class RenamoratorGUI:
     def start_rename(self):
         val = self.pack_prefix_var.get().strip()
 
-        if not (val == "" or re.fullmatch(r"[A-Za-z]{3,6}", val)):
+        if not (val == "" or re.fullmatch(r"[A-Za-z]{3,8}", val)):
             self.error_text.set(
-                "Pack Prefix must be 3–6 letters (A–Z), no numbers, no spaces.\n"
+                "Pack Prefix must be 3–8 letters (A–Z), no numbers, no spaces.\n"
                 "Leave blank to use the pack name."
             )
             return
