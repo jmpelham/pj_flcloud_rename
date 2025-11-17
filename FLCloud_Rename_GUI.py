@@ -86,7 +86,7 @@ def normalize_instrument_phrase(phrase: str):
     return whole, ""
 
 
-# ---------- NEW: key normalization ----------
+# ---------- key normalization ----------
 
 FLAT_TO_SHARP = {
     "Ab": "G#",
@@ -233,14 +233,18 @@ def process_folder(selected_path: str, on_progress=None, pack_prefix: str | None
                 m = re.search(r"(\d+(?:\.\d+)?)(?:\s*)BPM", wav.name, flags=re.IGNORECASE)
                 bpm_final = f"{m.group(1)}bpm" if m else "bpm"
 
-            # NEW: normalize key
+            # normalize key
             key_final = normalize_key(key) if key else ""
             descriptor = comp_name.replace(" ", "")  # remove spaces in comp name
 
-            parts = [LABEL, pack_abbrev, bpm_final, core]
+            # NEW ORDER:
+            # Label | Pack | Instruments | Attributes | Descriptor | BPM | Key
+            parts = [LABEL, pack_abbrev, core]
             if adj:
                 parts.append(adj)
             parts.append(descriptor)
+            if bpm_final:
+                parts.append(bpm_final)
             if key_final:
                 parts.append(key_final)
 
