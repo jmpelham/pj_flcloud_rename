@@ -17,7 +17,7 @@ DASH_SPLIT = re.compile(r"\s*-\s*")  # tolerant of missing/extra spaces
 CORE_SET = {
     "Bass", "Electric_Piano", "Guitar", "Lead", "Strings", "Choir", "Clavi",
     "Piano", "Organ", "Pad", "Pluck", "Arp", "Brass", "Synth", "Vibraphone",
-    "Full", "Flute", "Bell", "Glockenspiel", "Horns"
+    "Full", "Flute", "Bell", "Glockenspiel", "Horns", "Keys"
 }
 
 INSTRUMENT_MAP = {
@@ -37,12 +37,20 @@ INSTRUMENT_MAP = {
     "Pad": "Pad", "Pluck": "Pluck", "Arp": "Arp", "Brass": "Brass",
     "Synth": "Synth", "Vibraphone": "Vibraphone", "Vibes": "Vibraphone",
     "Flute": "Flute", "Bell": "Bell",
+    "Keys": "Keys",
 
     # Requested normalizations
     "Horn": "Horns", "Horns": "Horns",
     "Glock": "Glockenspiel", "Glockenspiel": "Glockenspiel",
 
     "Full": "Full",
+}
+
+# Priority: lower number = higher priority
+# Bass highest, then Guitar, everything else defaults to 2.
+CORE_PRIORITY = {
+    "Bass": 0,
+    "Guitar": 1,
 }
 
 
@@ -57,12 +65,26 @@ def normalize_instrument_phrase(phrase: str):
     """
     Extract instrument core + adjective.
 
-    - Rhodes / EP / Electric Piano → Electric_Piano, adjective is any prefix.
-    - Otherwise: last token is candidate core; if known, rest is adjective.
+    Steps:
+    - First, handle Electric_Piano variants.
+    - Then:
+      * Map each token to canonical form.
+      * Find all tokens whose canonical form is in CORE_SET.
+      * If multiple cores:
+          - Choose the one with the BEST (lowest) CORE_PRIORITY.
+          - If there's a tie, choose the RIGHTMOST among those.
+      * Core token becomes the instrument core; all other tokens
+        (including other cores) become the adjective.
+
+    This naturally gives:
+      - "Bass Guitar"        -> core Bass,   adj "Guitar"
+      - "Lead Bass Guitar"   -> core Bass,   adj "Lead Guitar"
+      - "Guitar Lead"        -> core Guitar, adj "Lead"
+      - "Lead Guitar"        -> core Guitar, adj "Lead"
     """
     s = re.sub(r"\s+", " ", phrase).strip()
 
-    # Electric_Piano family
+    # Electric_Piano family handled specially
     m = re.search(r"(?i)\b(rhodes|e\.?\s*piano|^ep$|electric\s+piano)\b", s)
     if m:
         before = s[:m.start()].strip()
@@ -75,11 +97,32 @@ def normalize_instrument_phrase(phrase: str):
     if len(tokens) == 1:
         return canon_core(tokens[0]), ""
 
-    core_candidate = canon_core(tokens[-1])
-    if core_candidate in CORE_SET:
-        adj = " ".join(tokens[:-1]).title()
-        return core_candidate, adj
+    canon_tokens = [canon_core(t) for t in tokens]
+    core_positions = [(i, c) for i, c in enumerate(canon_tokens) if c in CORE_SET]
 
+    # If we found at least one core token, use priority logic
+    if core_positions:
+        chosen_idx = None
+        chosen_core = None
+        best_priority = None
+
+        for i, c in core_positions:
+            pr = CORE_PRIORITY.get(c, 2)  # default lowest priority = 2
+            if best_priority is None or pr < best_priority:
+                best_priority = pr
+                chosen_idx = i
+                chosen_core = c
+            elif pr == best_priority and i > chosen_idx:
+                # tie in priority -> pick rightmost
+                chosen_idx = i
+                chosen_core = c
+
+        # Build adjective from everything except the chosen core token
+        adj_tokens = tokens[:chosen_idx] + tokens[chosen_idx + 1:]
+        adj = " ".join(adj_tokens).title() if adj_tokens else ""
+        return chosen_core, adj
+
+    # No core tokens found -> fallback behavior
     whole = canon_core(s)
     if whole in CORE_SET:
         return whole, ""
@@ -98,39 +141,18 @@ FLAT_TO_SHARP = {
 
 
 def normalize_key(key_raw: str) -> str:
-    """
-    Normalize keys so they are all either natural or sharp, and end in maj/min.
-
-    Rules:
-    - Flats converted to sharps via FLAT_TO_SHARP map.
-    - Quality suffix:
-        * m / min  → min
-        * maj     → maj
-        * none    → maj
-    Examples:
-        Abm  -> G#min
-        C#m  -> C#min
-        Dmin -> Dmin
-        B    -> Bmaj
-        Bmaj -> Bmaj
-        Ab   -> G#maj
-    """
     if not key_raw:
         return key_raw
 
     s = key_raw.strip()
-
-    # Match letter A-G, optional # or b, optional quality marker
     m = re.match(r'^([A-Ga-g])([#bB]?)(?:\s*(maj|MAJ|Maj|min|MIN|m))?$', s)
     if not m:
-        # If pattern unexpected, return original string unchanged
         return s
 
     root = m.group(1).upper()
     accidental = m.group(2) or ""
     qual_token = m.group(3)
 
-    # Determine minor / major
     is_minor = False
     if qual_token:
         q = qual_token.lower()
@@ -139,21 +161,17 @@ def normalize_key(key_raw: str) -> str:
         elif q == "maj":
             is_minor = False
     else:
-        # No explicit quality → treat as major
-        is_minor = False
+        is_minor = False  # default to major
 
-    # Convert flats Ab/Bb/Db/Eb/Gb → corresponding sharps
     if accidental.lower() == "b":
         flat_name = root + "b"
-        sharp_name = FLAT_TO_SHARP.get(flat_name)
+        sharp_name = FLAT_TO_SHARP.get(sharp_name_key := flat_name)
         if sharp_name:
-            root = sharp_name[0]  # letter before '#'
+            root = sharp_name[0]
             accidental = "#"
         else:
-            # Unknown flat, drop to natural
             accidental = ""
 
-    # Build normalized key
     root_str = root + (accidental if accidental == "#" else "")
     suffix = "min" if is_minor else "maj"
     return root_str + suffix
@@ -197,7 +215,6 @@ def process_folder(selected_path: str, on_progress=None, pack_prefix: str | None
     """
     on_progress: optional callback taking (phase_text, count_done, count_total)
     pack_prefix: optional override (3–6 letters, will be uppercased).
-                 If None/blank, uses derived pack_abbrev.
     """
     source_dir = Path(selected_path).expanduser().resolve()
     if not source_dir.exists() or not source_dir.is_dir():
@@ -223,9 +240,33 @@ def process_folder(selected_path: str, on_progress=None, pack_prefix: str | None
 
     for comp_folder in subfolders:
         comp_name, key, bpm = parse_comp_folder(comp_folder.name)
-        (dst_dir / comp_folder.name).mkdir(parents=True, exist_ok=True)
+        comp_dst_dir = dst_dir / comp_folder.name
+        comp_dst_dir.mkdir(parents=True, exist_ok=True)
 
-        for wav in sorted([p for p in comp_folder.iterdir() if p.suffix.lower() == ".wav"]):
+        comp_wavs = sorted([p for p in comp_folder.iterdir() if p.suffix.lower() == ".wav"])
+
+        # ---------- Pass 1: collect core instruments for Multi ----------
+        seen_cores: list[str] = []
+        for wav in comp_wavs:
+            core, adj = guess_instrument_from_filename(wav.name, comp_name)
+            if core == "Full":
+                continue
+            if core not in seen_cores:
+                seen_cores.append(core)
+
+        # up to 2 non-bass + Bass (if present)
+        multi_cores: list[str] = []
+        bass_present = "Bass" in seen_cores
+        non_bass = [c for c in seen_cores if c != "Bass"]
+        if non_bass:
+            multi_cores.append(non_bass[0])
+            if len(non_bass) > 1:
+                multi_cores.append(non_bass[1])
+        if bass_present:
+            multi_cores.append("Bass")
+
+        # ---------- Pass 2: actual renaming ----------
+        for wav in comp_wavs:
             core, adj = guess_instrument_from_filename(wav.name, comp_name)
 
             bpm_final = bpm
@@ -233,15 +274,21 @@ def process_folder(selected_path: str, on_progress=None, pack_prefix: str | None
                 m = re.search(r"(\d+(?:\.\d+)?)(?:\s*)BPM", wav.name, flags=re.IGNORECASE)
                 bpm_final = f"{m.group(1)}bpm" if m else "bpm"
 
-            # normalize key
             key_final = normalize_key(key) if key else ""
-            descriptor = comp_name.replace(" ", "")  # remove spaces in comp name
+            descriptor = comp_name.replace(" ", "")
 
-            # NEW ORDER:
-            # Label | Pack | Instruments | Attributes | Descriptor | BPM | Key
-            parts = [LABEL, pack_abbrev, core]
-            if adj:
-                parts.append(adj)
+            # Label | Pack | Instruments... | Descriptor | BPM | Key
+            parts = [LABEL, pack_abbrev]
+
+            if core == "Full":
+                if multi_cores:
+                    parts.extend(multi_cores)
+                parts.append("Multi")
+            else:
+                parts.append(core)
+                if adj:
+                    parts.append(adj)
+
             parts.append(descriptor)
             if bpm_final:
                 parts.append(bpm_final)
@@ -251,7 +298,7 @@ def process_folder(selected_path: str, on_progress=None, pack_prefix: str | None
             parts = [p.replace(" ", "_") for p in parts]
             new_name = "_".join(parts) + ".wav"
 
-            shutil.copyfile(wav, (dst_dir / comp_folder.name / new_name))
+            shutil.copyfile(wav, (comp_dst_dir / new_name))
 
             done += 1
             if on_progress:
@@ -266,7 +313,6 @@ class RenamoratorGUI:
         self.root.title("P&JxFL File Renamorator 3000")
         self.root.resizable(False, False)
 
-        # Load icons cross-platform
         icon_dir = Path(__file__).parent / "icons"
         try:
             if sys.platform.startswith("win"):
@@ -278,7 +324,6 @@ class RenamoratorGUI:
         except Exception as e:
             print(f"Warning: Could not load app icon ({e})")
 
-        # State
         self.selected_path = tk.StringVar(value="")
         self.pack_prefix_var = tk.StringVar(value="")
         self.status_text = tk.StringVar(value="")
@@ -286,7 +331,6 @@ class RenamoratorGUI:
         self.progress_value = tk.IntVar(value=0)
         self.progress_total = 1
 
-        # UI layout
         outer = tk.Frame(self.root, padx=16, pady=16)
         outer.pack(fill="both", expand=True)
 
@@ -314,7 +358,6 @@ class RenamoratorGUI:
         )
         self.path_label.pack(side="left", padx=10)
 
-        # Pack prefix override
         tk.Label(
             outer,
             text="Pack Prefix (3–6 letters; no numbers, no spaces)",
@@ -327,12 +370,10 @@ class RenamoratorGUI:
         self.prefix_entry = tk.Entry(prefix_row, textvariable=self.pack_prefix_var, width=20)
         self.prefix_entry.pack(side="left")
 
-        # Rename button (hidden until folder chosen & prefix valid)
         self.btn_rename = tk.Button(outer, text="Rename", width=18, command=self.start_rename)
         self.btn_rename.pack(anchor="w", pady=(12, 0))
         self.btn_rename.pack_forget()
 
-        # Progress + status
         self.progress = ttk.Progressbar(outer, mode="determinate", length=320, maximum=100)
         self.progress.pack(anchor="w", pady=(12, 0))
         self.progress.pack_forget()
@@ -341,7 +382,6 @@ class RenamoratorGUI:
         self.status_label.pack(anchor="w")
         self.status_label.pack_forget()
 
-        # Error label (red, bottom)
         self.error_label = tk.Label(
             outer,
             textvariable=self.error_text,
@@ -351,22 +391,16 @@ class RenamoratorGUI:
         )
         self.error_label.pack(anchor="w", pady=(8, 0))
 
-        # Live sanitization + validation for prefix field
         self.pack_prefix_var.trace_add("write", lambda *_: self._prefix_sanitize_and_validate())
 
-    # ---------- GUI helpers ----------
-
     def _prefix_sanitize_and_validate(self):
-        """Remove spaces immediately and re-validate prefix rules."""
         val = self.pack_prefix_var.get()
 
-        # Strip all spaces immediately
         if " " in val:
             val = val.replace(" ", "")
             self.pack_prefix_var.set(val)
             return
 
-        # Valid if empty OR 3–6 letters only (no digits, no other chars)
         if val == "" or re.fullmatch(r"[A-Za-z]{3,6}", val):
             self.error_text.set("")
             if self.selected_path.get():
@@ -387,8 +421,6 @@ class RenamoratorGUI:
             return
 
         self.selected_path.set(sel)
-
-        # Reset pack prefix whenever a new folder is selected
         self.pack_prefix_var.set("")
         self.error_text.set("")
         self._prefix_sanitize_and_validate()
@@ -396,7 +428,6 @@ class RenamoratorGUI:
     def start_rename(self):
         val = self.pack_prefix_var.get().strip()
 
-        # Final guard against invalid prefix
         if not (val == "" or re.fullmatch(r"[A-Za-z]{3,6}", val)):
             self.error_text.set(
                 "Pack Prefix must be 3–6 letters (A–Z), no numbers, no spaces.\n"
