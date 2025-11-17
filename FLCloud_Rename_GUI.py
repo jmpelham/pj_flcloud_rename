@@ -86,6 +86,79 @@ def normalize_instrument_phrase(phrase: str):
     return whole, ""
 
 
+# ---------- NEW: key normalization ----------
+
+FLAT_TO_SHARP = {
+    "Ab": "G#",
+    "Bb": "A#",
+    "Db": "C#",
+    "Eb": "D#",
+    "Gb": "F#",
+}
+
+
+def normalize_key(key_raw: str) -> str:
+    """
+    Normalize keys so they are all either natural or sharp, and end in maj/min.
+
+    Rules:
+    - Flats converted to sharps via FLAT_TO_SHARP map.
+    - Quality suffix:
+        * m / min  → min
+        * maj     → maj
+        * none    → maj
+    Examples:
+        Abm  -> G#min
+        C#m  -> C#min
+        Dmin -> Dmin
+        B    -> Bmaj
+        Bmaj -> Bmaj
+        Ab   -> G#maj
+    """
+    if not key_raw:
+        return key_raw
+
+    s = key_raw.strip()
+
+    # Match letter A-G, optional # or b, optional quality marker
+    m = re.match(r'^([A-Ga-g])([#bB]?)(?:\s*(maj|MAJ|Maj|min|MIN|m))?$', s)
+    if not m:
+        # If pattern unexpected, return original string unchanged
+        return s
+
+    root = m.group(1).upper()
+    accidental = m.group(2) or ""
+    qual_token = m.group(3)
+
+    # Determine minor / major
+    is_minor = False
+    if qual_token:
+        q = qual_token.lower()
+        if q in ("m", "min"):
+            is_minor = True
+        elif q == "maj":
+            is_minor = False
+    else:
+        # No explicit quality → treat as major
+        is_minor = False
+
+    # Convert flats Ab/Bb/Db/Eb/Gb → corresponding sharps
+    if accidental.lower() == "b":
+        flat_name = root + "b"
+        sharp_name = FLAT_TO_SHARP.get(flat_name)
+        if sharp_name:
+            root = sharp_name[0]  # letter before '#'
+            accidental = "#"
+        else:
+            # Unknown flat, drop to natural
+            accidental = ""
+
+    # Build normalized key
+    root_str = root + (accidental if accidental == "#" else "")
+    suffix = "min" if is_minor else "maj"
+    return root_str + suffix
+
+
 def parse_comp_folder(folder_name: str):
     parts = DASH_SPLIT.split(folder_name)
     comp = parts[0].strip() if parts else folder_name.strip()
@@ -160,7 +233,8 @@ def process_folder(selected_path: str, on_progress=None, pack_prefix: str | None
                 m = re.search(r"(\d+(?:\.\d+)?)(?:\s*)BPM", wav.name, flags=re.IGNORECASE)
                 bpm_final = f"{m.group(1)}bpm" if m else "bpm"
 
-            key_final = key if key else ""
+            # NEW: normalize key
+            key_final = normalize_key(key) if key else ""
             descriptor = comp_name.replace(" ", "")  # remove spaces in comp name
 
             parts = [LABEL, pack_abbrev, bpm_final, core]
@@ -282,14 +356,13 @@ class RenamoratorGUI:
         """Remove spaces immediately and re-validate prefix rules."""
         val = self.pack_prefix_var.get()
 
-        # Strip all spaces immediately (block user from having spaces at all)
+        # Strip all spaces immediately
         if " " in val:
             val = val.replace(" ", "")
-            # Setting the var will trigger this callback again and then validate
             self.pack_prefix_var.set(val)
             return
 
-        # valid if empty OR 3–6 letters only (no digits, no other chars)
+        # Valid if empty OR 3–6 letters only (no digits, no other chars)
         if val == "" or re.fullmatch(r"[A-Za-z]{3,6}", val):
             self.error_text.set("")
             if self.selected_path.get():
@@ -314,7 +387,6 @@ class RenamoratorGUI:
         # Reset pack prefix whenever a new folder is selected
         self.pack_prefix_var.set("")
         self.error_text.set("")
-        # Re-validate to update Rename button state with blank prefix
         self._prefix_sanitize_and_validate()
 
     def start_rename(self):
