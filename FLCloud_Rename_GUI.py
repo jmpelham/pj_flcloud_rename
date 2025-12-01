@@ -226,7 +226,7 @@ def process_folder(selected_path: str, on_progress=None, pack_prefix: str | None
     if pack_prefix and pack_prefix.strip():
         pack_abbrev = pack_prefix.strip().upper()
 
-    # NEW: always write into sibling folder called "Samples"
+    # Output always goes into sibling folder called "Samples"
     dst_dir = parent_dir / "Samples"
     dst_dir.mkdir(exist_ok=True)
 
@@ -276,9 +276,11 @@ def process_folder(selected_path: str, on_progress=None, pack_prefix: str | None
                 bpm_final = f"{m.group(1)}bpm" if m else "bpm"
 
             key_final = normalize_key(key) if key else ""
-            descriptor = comp_name.replace(" ", "")
+            # remove spaces, then wrap in double brackets
+            comp_no_spaces = comp_name.replace(" ", "")
+            descriptor_wrapped = f"[[{comp_no_spaces}]]"
 
-            # Label | Pack | Instruments... | Descriptor | BPM | Key
+            # Label | Pack | Instruments... | [[Descriptor]] | BPM | Key
             parts = [LABEL, pack_abbrev]
 
             if core == "Full":
@@ -290,12 +292,13 @@ def process_folder(selected_path: str, on_progress=None, pack_prefix: str | None
                 if adj:
                     parts.append(adj)
 
-            parts.append(descriptor)
+            parts.append(descriptor_wrapped)
             if bpm_final:
                 parts.append(bpm_final)
             if key_final:
                 parts.append(key_final)
 
+            # filenames cannot contain spaces; use underscores
             parts = [p.replace(" ", "_") for p in parts]
             new_name = "_".join(parts) + ".wav"
 
