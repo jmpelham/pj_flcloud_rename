@@ -165,7 +165,7 @@ def normalize_key(key_raw: str) -> str:
 
     if accidental.lower() == "b":
         flat_name = root + "b"
-        sharp_name = FLAT_TO_SHARP.get(sharp_name_key := flat_name)
+        sharp_name = FLAT_TO_SHARP.get(flat_name)
         if sharp_name:
             root = sharp_name[0]
             accidental = "#"
@@ -226,7 +226,8 @@ def process_folder(selected_path: str, on_progress=None, pack_prefix: str | None
     if pack_prefix and pack_prefix.strip():
         pack_abbrev = pack_prefix.strip().upper()
 
-    dst_dir = parent_dir / f"_{source_dir.name}"
+    # NEW: always write into sibling folder called "Samples"
+    dst_dir = parent_dir / "Samples"
     dst_dir.mkdir(exist_ok=True)
 
     LABEL = "P&J"
@@ -470,7 +471,7 @@ class RenamoratorGUI:
         self.progress["value"] = 100
         messagebox.showinfo(
             "Done",
-            "Renaming complete.\nOutput written to sibling folder prefixed with underscore."
+            "Renaming complete.\nOutput written to sibling folder named 'Samples'."
         )
 
     def _finish_with_error(self, msg):
