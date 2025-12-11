@@ -65,22 +65,10 @@ def normalize_instrument_phrase(phrase: str):
     """
     Extract instrument core + adjective.
 
-    Steps:
-    - First, handle Electric_Piano variants.
-    - Then:
-      * Map each token to canonical form.
-      * Find all tokens whose canonical form is in CORE_SET.
-      * If multiple cores:
-          - Choose the one with the BEST (lowest) CORE_PRIORITY.
-          - If there's a tie, choose the RIGHTMOST among those.
-      * Core token becomes the instrument core; all other tokens
-        (including other cores) become the adjective.
-
-    This naturally gives:
-      - "Bass Guitar"        -> core Bass,   adj "Guitar"
-      - "Lead Bass Guitar"   -> core Bass,   adj "Lead Guitar"
-      - "Guitar Lead"        -> core Guitar, adj "Lead"
-      - "Lead Guitar"        -> core Guitar, adj "Lead"
+    With priority rules:
+      - Bass > Guitar > everything else (default).
+      - On ties, pick the RIGHTMOST of the highest-priority cores.
+      - All other tokens become the adjective.
     """
     s = re.sub(r"\s+", " ", phrase).strip()
 
@@ -178,8 +166,31 @@ def normalize_key(key_raw: str) -> str:
 
 
 def parse_comp_folder(folder_name: str):
+    """
+    Extract comp_name, key, bpm from a composition folder name.
+
+    NEW behavior:
+    - Take the part before the first ' - ' as the "raw_comp".
+    - If raw_comp has 3+ tokens, treat everything from the 3rd token onward
+      as the descriptor and use THAT as comp_name.
+        e.g. "NFSII 1 Cruise"        -> comp_name = "Cruise"
+             "NFSII 3 Midnight Drive"-> comp_name = "Midnight Drive"
+    - If raw_comp has 1–2 tokens, keep old behavior and use raw_comp.
+        e.g. "NFSII 1"  -> comp_name = "NFSII 1"
+             "LC 12"    -> comp_name = "LC 12"
+             "Eight"    -> comp_name = "Eight"
+    """
     parts = DASH_SPLIT.split(folder_name)
-    comp = parts[0].strip() if parts else folder_name.strip()
+    raw_comp = parts[0].strip() if parts else folder_name.strip()
+
+    tokens = raw_comp.split()
+    if len(tokens) >= 3:
+        comp = " ".join(tokens[2:]).strip()
+        if not comp:  # just in case
+            comp = raw_comp
+    else:
+        comp = raw_comp
+
     key = parts[1].strip() if len(parts) >= 2 else None
     bpm = None
     if len(parts) >= 3:
@@ -194,21 +205,15 @@ def parse_comp_folder(folder_name: str):
 
 def guess_instrument_from_filename(filename: str, comp_name: str):
     """
-    New behavior:
-    - Ignore the comp prefix in the filename.
-    - Treat everything AFTER the first ' - ' as the instrument phrase.
-    - If there is no ' - ' at all, treat this as the Full/Multi loop.
+    Treat everything AFTER the first ' - ' as the instrument phrase.
+    If there is no ' - ' at all, treat this as the Full/Multi loop.
     """
     stem = Path(filename).stem.strip()
 
-    # Split once on the tolerant DASH_SPLIT pattern
     parts = DASH_SPLIT.split(stem, maxsplit=1)
-
     if len(parts) == 1:
-        # No delimiter: treat as Full / Multi
         instrument_raw = "Full"
     else:
-        # Instrument is everything after the first " - "
         instrument_raw = parts[1].strip()
         if not instrument_raw:
             instrument_raw = "Full"
