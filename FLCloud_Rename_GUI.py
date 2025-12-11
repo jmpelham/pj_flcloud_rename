@@ -193,12 +193,26 @@ def parse_comp_folder(folder_name: str):
 
 
 def guess_instrument_from_filename(filename: str, comp_name: str):
-    stem = Path(filename).stem
-    if stem.lower().startswith(comp_name.lower()):
-        remainder = re.sub(r"^\s*-\s*", "", stem[len(comp_name):])
-        instrument_raw = remainder if remainder else "Full"
+    """
+    New behavior:
+    - Ignore the comp prefix in the filename.
+    - Treat everything AFTER the first ' - ' as the instrument phrase.
+    - If there is no ' - ' at all, treat this as the Full/Multi loop.
+    """
+    stem = Path(filename).stem.strip()
+
+    # Split once on the tolerant DASH_SPLIT pattern
+    parts = DASH_SPLIT.split(stem, maxsplit=1)
+
+    if len(parts) == 1:
+        # No delimiter: treat as Full / Multi
+        instrument_raw = "Full"
     else:
-        instrument_raw = stem
+        # Instrument is everything after the first " - "
+        instrument_raw = parts[1].strip()
+        if not instrument_raw:
+            instrument_raw = "Full"
+
     instrument_raw = re.sub(r"\s+", " ", instrument_raw).strip()
     return normalize_instrument_phrase(instrument_raw)
 
