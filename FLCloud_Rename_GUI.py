@@ -17,7 +17,8 @@ DASH_SPLIT = re.compile(r"\s*-\s*")  # tolerant of missing/extra spaces
 CORE_SET = {
     "Bass", "Electric_Piano", "Guitar", "Lead", "Strings", "Choir", "Clavi",
     "Piano", "Organ", "Pad", "Pluck", "Arp", "Brass", "Synth", "Vibraphone",
-    "Full", "Flute", "Bell", "Glockenspiel", "Horns", "Keys"
+    "Full", "Flute", "Bell", "Bells", "Mallets", "Kalimba", "Vocals",
+    "Glockenspiel", "Horns", "Keys"
 }
 
 INSTRUMENT_MAP = {
@@ -36,7 +37,9 @@ INSTRUMENT_MAP = {
     "Choir": "Choir", "Clavi": "Clavi", "Organ": "Organ",
     "Pad": "Pad", "Pluck": "Pluck", "Arp": "Arp", "Brass": "Brass",
     "Synth": "Synth", "Vibraphone": "Vibraphone", "Vibes": "Vibraphone",
-    "Flute": "Flute", "Bell": "Bell",
+    "Flute": "Flute", "Bell": "Bells", "Bells": "Bells",
+    "Mallets": "Mallets", "Kalimba": "Kalimba",
+    "Vocals": "Vocals", "Vox": "Vocals", "Vocal": "Vocals",
     "Keys": "Keys",
 
     # Requested normalizations
@@ -169,16 +172,10 @@ def parse_comp_folder(folder_name: str):
     """
     Extract comp_name, key, bpm from a composition folder name.
 
-    NEW behavior:
     - Take the part before the first ' - ' as the "raw_comp".
     - If raw_comp has 3+ tokens, treat everything from the 3rd token onward
       as the descriptor and use THAT as comp_name.
-        e.g. "NFSII 1 Cruise"        -> comp_name = "Cruise"
-             "NFSII 3 Midnight Drive"-> comp_name = "Midnight Drive"
-    - If raw_comp has 1–2 tokens, keep old behavior and use raw_comp.
-        e.g. "NFSII 1"  -> comp_name = "NFSII 1"
-             "LC 12"    -> comp_name = "LC 12"
-             "Eight"    -> comp_name = "Eight"
+    - If raw_comp has 1–2 tokens, use raw_comp as comp_name.
     """
     parts = DASH_SPLIT.split(folder_name)
     raw_comp = parts[0].strip() if parts else folder_name.strip()
