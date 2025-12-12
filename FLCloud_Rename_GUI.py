@@ -15,30 +15,51 @@ from tkinter import ttk
 DASH_SPLIT = re.compile(r"\s*-\s*")  # tolerant of missing/extra spaces
 
 CORE_SET = {
-    "Bass", "Electric_Piano", "Guitar", "Lead", "Strings", "Choir", "Clavi",
+    # Core instruments (canonical)
+    "Bass", "Electric Bass", "Synth Bass", "Upright Bass",
+    "Guitar", "Acoustic Guitar", "Electric Guitar",
+    "Electric_Piano",
+    "Lead", "Strings", "Choir", "Clavi",
     "Piano", "Organ", "Pad", "Pluck", "Arp", "Brass", "Synth", "Vibraphone",
-    "Full", "Flute", "Bell", "Bells", "Mallets", "Kalimba", "Vocals",
-    "Glockenspiel", "Horns", "Keys"
+    "Full", "Flute",
+    "Bells", "Mallets", "Kalimba", "Vocals",
+    "Glockenspiel", "Horns", "Keys",
 }
 
 INSTRUMENT_MAP = {
-    # Bass family
-    "Bassline": "Bass", "Bass Line": "Bass", "Electric Bass": "Bass",
-    "Upright Bass": "Bass", "Sub Bass": "Bass", "Bass": "Bass",
+    # Bass family (canonical core chosen via priority + adjective specialization)
+    "Bassline": "Bass", "Bass Line": "Bass", "Sub Bass": "Bass", "Bass": "Bass",
+    "Electric Bass": "Bass", "Upright Bass": "Bass", "Synth Bass": "Bass",
 
     # Electric piano family → Electric_Piano
-    "Rhodes": "Electric_Piano", "E. Piano": "Electric_Piano", "EP": "Electric_Piano",
-    "Electric Piano": "Electric_Piano", "Rhodes Piano": "Electric_Piano",
+    "Rhodes": "Electric_Piano", "Rhodes Piano": "Electric_Piano",
+    "E. Piano": "Electric_Piano", "EP": "Electric_Piano",
+    "Electric Piano": "Electric_Piano",
+
+    # Guitar family (canonical core chosen via priority + adjective specialization)
+    "Guitar": "Guitar",
+    "Electric Guitar": "Guitar",
+    "Acoustic Guitar": "Guitar",
 
     # Straight cores
+    "Lead": "Lead",
+    "Strings": "Strings", "String": "Strings",
+    "Choir": "Choir",
+    "Clavi": "Clavi",
     "Piano": "Piano", "Grand Piano": "Piano",
-    "Guitar": "Guitar", "Electric Guitar": "Guitar", "Acoustic Guitar": "Guitar",
-    "Lead": "Lead", "Strings": "Strings", "String": "Strings",
-    "Choir": "Choir", "Clavi": "Clavi", "Organ": "Organ",
-    "Pad": "Pad", "Pluck": "Pluck", "Arp": "Arp", "Brass": "Brass",
-    "Synth": "Synth", "Vibraphone": "Vibraphone", "Vibes": "Vibraphone",
-    "Flute": "Flute", "Bell": "Bells", "Bells": "Bells",
-    "Mallets": "Mallets", "Kalimba": "Kalimba",
+    "Organ": "Organ",
+    "Pad": "Pad",
+    "Pluck": "Pluck",
+    "Arp": "Arp",
+    "Brass": "Brass",
+    "Synth": "Synth",
+    "Vibraphone": "Vibraphone", "Vibes": "Vibraphone",
+    "Flute": "Flute",
+
+    # New cores
+    "Bell": "Bells", "Bells": "Bells",
+    "Mallets": "Mallets",
+    "Kalimba": "Kalimba",
     "Vocals": "Vocals", "Vox": "Vocals", "Vocal": "Vocals",
     "Keys": "Keys",
 
@@ -62,6 +83,57 @@ def canon_core(token: str) -> str:
         if token.lower() == k.lower():
             return v
     return token.title()
+
+
+def _specialize_bass_guitar_core(core: str, adj: str):
+    """Upgrade Bass/Guitar core names based on certain adjective words.
+
+    Rules:
+      Bass:
+        - If adj contains 'Synth'   -> core 'Synth Bass'
+        - If adj contains 'Upright' -> core 'Upright Bass'
+        - If adj contains 'Electric' OR 'Guitar' -> core 'Electric Bass'
+        - Otherwise core 'Bass'
+        - Consumed words are removed from the adjective, other words remain.
+
+      Guitar:
+        - If adj contains 'Acoustic' OR 'Nylon' -> core 'Acoustic Guitar'
+        - If adj contains 'Electric'            -> core 'Electric Guitar'
+        - Otherwise core 'Guitar'
+        - Consumed words are removed from the adjective, other words remain.
+    """
+    if not adj:
+        return core, adj
+
+    words = [w for w in adj.split() if w]
+    low = [w.lower() for w in words]
+
+    def remove_words(to_remove):
+        rem = {w.lower() for w in to_remove}
+        kept = [w for w in words if w.lower() not in rem]
+        return " ".join(kept).title() if kept else ""
+
+    if core == "Bass":
+        if "synth" in low:
+            return "Synth Bass", remove_words(["Synth"])
+        if "upright" in low:
+            return "Upright Bass", remove_words(["Upright"])
+        if "electric" in low or "guitar" in low:
+            return "Electric Bass", remove_words(["Electric", "Guitar"])
+        return "Bass", adj
+
+    if core == "Guitar":
+        if "acoustic" in low or "nylon" in low:
+            return "Acoustic Guitar", remove_words(["Acoustic", "Nylon"])
+        if "electric" in low:
+            return "Electric Guitar", remove_words(["Electric"])
+        return "Guitar", adj
+
+    return core, adj
+
+
+def _is_bass_core(core: str) -> bool:
+    return core in {"Bass", "Electric Bass", "Synth Bass", "Upright Bass"}
 
 
 def normalize_instrument_phrase(phrase: str):
@@ -111,6 +183,7 @@ def normalize_instrument_phrase(phrase: str):
         # Build adjective from everything except the chosen core token
         adj_tokens = tokens[:chosen_idx] + tokens[chosen_idx + 1:]
         adj = " ".join(adj_tokens).title() if adj_tokens else ""
+        chosen_core, adj = _specialize_bass_guitar_core(chosen_core, adj)
         return chosen_core, adj
 
     # No core tokens found -> fallback behavior
@@ -271,16 +344,17 @@ def process_folder(selected_path: str, on_progress=None, pack_prefix: str | None
             if core not in seen_cores:
                 seen_cores.append(core)
 
-        # up to 2 non-bass + Bass (if present)
+        # up to 2 non-bass + Bass (if present; Bass stays last)
         multi_cores: list[str] = []
-        bass_present = "Bass" in seen_cores
-        non_bass = [c for c in seen_cores if c != "Bass"]
+        bass_core = next((c for c in seen_cores if _is_bass_core(c)), None)
+        bass_present = bass_core is not None
+        non_bass = [c for c in seen_cores if not _is_bass_core(c)]
         if non_bass:
             multi_cores.append(non_bass[0])
             if len(non_bass) > 1:
                 multi_cores.append(non_bass[1])
-        if bass_present:
-            multi_cores.append("Bass")
+        if bass_present and bass_core:
+            multi_cores.append(bass_core)
 
         # ---------- Pass 2: actual renaming ----------
         for wav in comp_wavs:
